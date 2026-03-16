@@ -1,0 +1,104 @@
+#include <Wire.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <BH1750.h>
+#include <math.h>
+
+const int MIC_PIN = A0;
+const int DC_OFFSET = 250;  // Fixed - ditt uppmätta värde
+
+// Config
+#define ONE_WIRE_BUS 2 // ds18b20 - Signal Pin
+
+// Object setup
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature tempSensor(&oneWire);
+BH1750 lightMeter;
+
+int loopCount = 0;
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+ 
+  // Sensors start
+  tempSensor.begin();
+  lightMeter.begin();
+ 
+  Serial.println("Sensors Initialized: DS18b20, MAX9814, BH1750");
+  Serial.println("Starting measurements...");
+ 
+  delay(1000);
+}
+
+void loop() {
+  loopCount++;
+ 
+  // Temp read - DS18B20
+  tempSensor.requestTemperatures();
+  float temperature = tempSensor.getTempCByIndex(0);
+ 
+  // Light read - BH1750
+  float lux = lightMeter.readLightLevel();
+ 
+  // Read mic loudness - MAX9814
+  unsigned long startMillis = millis();
+  int signalMax = 0;
+  int signalMin = 1024;
+  int samples = 0;
+ 
+  // Sample for 50ms to catch peaks
+  while (millis() - startMillis < 50) {
+    int raw = analogRead(MIC_PIN);
+   
+    if (raw > signalMax) signalMax = raw;
+    if (raw < signalMin) signalMin = raw;
+    samples++;
+  }
+ 
+  // Calculate peak-to-peak amplitude
+  int peakToPeak = signalMax - signalMin;
+ 
+  // Convert to dB
+  // Using empirical formula for MAX9814
+  float dB;
+ 
+  if (peakToPeak < 10) {
+    dB = 30;  // Noise floor / very quiet
+  } else {
+    // Logarithmic scale: dB = 20 * log10(amplitude)
+    // Calibrated for typical classroom environment
+    dB = 20.0 * log10(peakToPeak) + 5 ;
+   
+    // Clamp to reasonable range
+    if (dB < 30) dB = 30;
+    if (dB > 100) dB = 100;
+  }
+ 
+  // Print results
+  Serial.print("Temp: ");
+  if (temperature != -127.0) {
+    Serial.print(temperature, 1);
+    Serial.print(" C");
+  } else {
+    Serial.print("ERROR");
+  }
+ 
+  Serial.print(" | Light: ");
+  if (lux >= 0) {
+    Serial.print(lux, 0);
+    Serial.print(" lx");
+  } else {
+    Serial.print("ERROR");
+  }
+ 
+  Serial.print(" | Sound: ");
+  Serial.print(dB, 1);
+  Serial.print(" dB");
+ 
+
+ 
+  Serial.println();
+ 
+  delay(100);
+}
